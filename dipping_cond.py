@@ -7,7 +7,7 @@ from simpeg.utils import model_builder
 from pymatsolver import Pardiso
 
 # discretize functionality
-from discretize import TreeMesh, TensorMesh
+from discretize import TreeMesh
 from discretize.utils import mkvc, active_from_xyz
 
 import numpy as np
@@ -107,3 +107,54 @@ ax.set_xlim([-3500, 3500])
 ax.set_ylim([-12000, 100])
 plt.title(f"Conductivity Model")
 plt.show()
+
+
+freqs = np.logspace(-2, 1, 20)
+
+te_src_list = []
+tm_src_list = []
+
+for f in freqs: 
+    te_rx_list = [
+        nsem.receivers.Impedance(rx_locs, orientation="xy", component="real"),
+        nsem.receivers.Impedance(rx_locs, orientation="xy", component="imag"),
+    ]
+    tm_rx_list = [
+        nsem.receivers.Impedance(rx_locs, orientation="yx", component="real"),
+        nsem.receivers.Impedance(rx_locs, orientation="yx", component="imag"),
+    ]
+
+    te_src_list.append(nsem.sources.Planewave(te_rx_list, frequency=f))
+    tm_src_list.append(nsem.sources.Planewave(tm_rx_list, frequency=f))
+
+te_survey = nsem.survey.Survey(te_src_list)
+tm_survey = nsem.survey.Survey(tm_src_list)
+
+
+# create the simulation
+te_sim = nsem.simulation.Simulation2DElectricField(
+    mesh,
+    survey=te_survey,
+    sigmaMap=maps.IdentityMap(mesh),
+    forward_only=True,
+    solver=Pardiso
+)
+
+tm_sim = nsem.simulation.Simulation2DMagneticField(
+    mesh,
+    survey=tm_survey,
+    sigmaMap=maps.IdentityMap(mesh),
+    forward_only=True,
+    solver=Pardiso
+)
+
+
+te_dpred = te_sim.dpred(conductivity_model)
+tm_dpred = tm_sim.dpred(conductivity_model)
+
+te_data = te_dpred.reshape(len(freqs), 2, rx_locs.shape[0])
+tm_data = tm_dpred.reshape(len(freqs), 2, rx_locs.shape[0])
+
+np.save('data/te_dpred.npy', te_data)
+np.save('data/tm_dpred.npy', tm_data)
+np.save('data/freqs.npy', freqs)
