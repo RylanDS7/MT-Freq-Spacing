@@ -152,9 +152,6 @@ tm_sim = nsem.simulation.Simulation2DMagneticField(
 te_dpred = te_sim.dpred(conductivity_model)
 tm_dpred = tm_sim.dpred(conductivity_model)
 
-te_data = te_dpred.reshape(len(freqs), 2, rx_locs.shape[0])
-tm_data = tm_dpred.reshape(len(freqs), 2, rx_locs.shape[0])
-
-np.save('data/te_dpred.npy', te_data)
-np.save('data/tm_dpred.npy', tm_data)
+np.save('data/te_dpred.npy', te_dpred)
+np.save('data/tm_dpred.npy', tm_dpred)
 np.save('data/freqs.npy', freqs)
