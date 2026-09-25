@@ -1,0 +1,111 @@
+# Code by Rylan Stutters - github.com/RylanDS7
+
+# SimPEG functionality
+from simpeg import maps
+from simpeg.electromagnetics import natural_source as nsem
+from simpeg.utils import model_builder
+from pymatsolver import Pardiso
+
+# discretize functionality
+from discretize import TensorMesh
+
+import numpy as np
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
+
+
+def generate_halfspace(rho):
+    cell_widths = np.append(np.logspace(2, 1, 100), 5.0 * np.ones(50))
+    mesh = TensorMesh([cell_widths], origin="N")
+
+    rho_log = np.log(rho) # log of 100 Ohm-m
+    model = rho_log * np.ones(mesh.nC)
+
+    return model, mesh
+
+
+def build_sim(mesh, freqs):
+    rx_loc = np.array([-0.1])
+
+    rx_list = [
+            nsem.receivers.Impedance(
+                locations_e=rx_loc,
+                orientation="xy",
+                component="real",
+            ),
+            nsem.receivers.Impedance(
+                locations_e=rx_loc,
+                orientation="xy",
+                component="imag",
+            ),
+    ]
+
+    src_list = []
+    for f in freqs:
+        src_list.append(
+            nsem.sources.Planewave(
+                receiver_list=rx_list,
+                frequency=f,
+            )
+        )
+
+    survey = nsem.Survey(src_list)
+
+    mapping = maps.ExpMap()
+
+    sim = nsem.Simulation1DElectricField(
+        mesh,
+        survey=survey,
+        rhoMap=mapping,
+        solver=Pardiso,
+    )
+
+    return sim
+
+
+def plot_mesh_quantity(plot_q, sim):
+    mesh = sim.mesh
+    mapping = maps.ExpMap()
+
+    fig, ax = plt.subplots(figsize=(6, 10))
+
+    ax.step(np.append(plot_q, plot_q[-1]), mesh.nodes_x, where='post', color='blue', lw=2)
+
+    for node in mesh.nodes_x:
+        ax.axhline(node, color='gray', linestyle='--', alpha=0.3)
+
+    ax.set_ylabel('Distance/Depth (m)')
+    ax.set_xlabel('Resistivity')
+    ax.set_title('1D Quantity')
+    ax.grid(True, alpha=0.1)
+    plt.show()
+
+
+# DOESNT WORK BECAUSE getJ IS NOT IMPLEMENTED FOR SIMPEG 1DSIM
+def plot_J(m, sim):
+    J = sim.getJ(m)
+    mesh = sim.mesh
+
+    cell_sensitivity = np.sqrt(np.sum(J**2, axis=0))
+
+    active_cells = sim.active_cells
+    plot_map = maps.InjectActiveCells(mesh, active_cells=active_cells, value_inactive=0)
+
+    fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+    mesh.plot_image(plot_map * cell_sensitivity, ax=ax, grid=True)
+    ax.set_title("Total Sensitivity per Cell")
+    plt.show()
+
+
+def plot_delta_sensitivity(m, freqs):
+    n_freq = len(freqs)
+
+    # To be implemented
+
+
+
+model, mesh = generate_halfspace(1000)
+freqs = [100]
+sim = build_sim(mesh, freqs)
+plot_mesh_quantity(sim.rhoMap * model, sim)

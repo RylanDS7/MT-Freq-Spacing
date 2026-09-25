@@ -66,7 +66,7 @@ mesh.finalize()
 print(f"Cell Count: {mesh.n_cells}")
 
 
-background_conductivity = 0.01
+background_conductivity = 0.001
 cond_conductivity = 0.1
 air_conductivity = 1e-8
 

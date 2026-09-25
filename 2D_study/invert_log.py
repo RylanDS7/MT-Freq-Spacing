@@ -87,13 +87,13 @@ tm_data = data.Data(tm_survey, tm_dpred)
 
 active_cells = discretize.utils.mesh_utils.active_from_xyz(mesh, rx_locs)
 actmap = maps.InjectActiveCells(
-    mesh, active_cells=active_cells, value_inactive=np.log(1/1e-8)
+    mesh, active_cells=active_cells, value_inactive=np.log10(1/1e-8)
 )
 expmap = maps.ExpMap()
 recipmap = maps.ReciprocalMap()
 
-background_cond = 0.01
-m0 = (np.ones(mesh.nC) * np.log(1/background_cond))[active_cells]
+background_cond = 0.001
+m0 = (np.ones(mesh.nC) * np.log10(1/background_cond))[active_cells]
 
 
 # create the simulation
@@ -134,11 +134,11 @@ regmap = maps.IdentityMap(nP=int(active_cells.sum()))
 
 reg = regularization.WeightedLeastSquares(mesh, active_cells=active_cells, mapping=regmap)
 
-reg.alpha_s = 1e-8
+reg.alpha_s = 0
 reg.alpha_x = 1
 reg.alpha_z = 1
 
-opt = optimization.ProjectedGNCG(maxIter=20, upper=np.log(1/1e-5), lower=np.log(1/100))
+opt = optimization.ProjectedGNCG(maxIter=5, upper=8, lower=-3)
 invProb_tetm = inverse_problem.BaseInvProblem(dmisfit_combo, reg, opt)
 beta = directives.BetaSchedule(
     coolingFactor=coolingFactor, coolingRate=coolingRate
@@ -156,6 +156,85 @@ inv = inversion.BaseInversion(
     invProb_tetm, directiveList=directiveList)
 opt.remember('xc')
 
+# print("Testing")
+# te_m0_dpred = te_sim.dpred(m0)
+
+# for i in np.arange(len(rx_locs)):
+#     plt.plot(te_dpred.reshape(len(freqs), len(rx_locs), 2)[:, i, 0])
+#     plt.plot(te_m0_dpred.reshape(len(freqs), len(rx_locs), 2)[:, i, 0], c='orange')
+#     plt.title(f"TE Receiver {i} Real")
+#     plt.show()
+
+# for i in np.arange(len(rx_locs)):
+#     plt.plot(te_dpred.reshape(len(freqs), len(rx_locs), 2)[:, i, 1])
+#     plt.plot(te_m0_dpred.reshape(len(freqs), len(rx_locs), 2)[:, i, 1], c='orange')
+#     plt.title(f"TE Receiver {i} Imag")
+#     plt.show()
+
+# tm_m0_dpred = tm_sim.dpred(m0)
+
+# for i in np.arange(len(rx_locs)):
+#     plt.plot(tm_dpred.reshape(len(freqs), len(rx_locs), 2)[:, i, 0])
+#     plt.plot(tm_m0_dpred.reshape(len(freqs), len(rx_locs), 2)[:, i, 0], c='orange')
+#     plt.title(f"TM Receiver {i} Real")
+#     plt.show()
+
+# for i in np.arange(len(rx_locs)):
+#     plt.plot(tm_dpred.reshape(len(freqs), len(rx_locs), 2)[:, i, 1])
+#     plt.plot(tm_m0_dpred.reshape(len(freqs), len(rx_locs), 2)[:, i, 1], c='orange')
+#     plt.title(f"TM Receiver {i} Imag")
+#     plt.show()
+
 # Run Inversion
 minv_tetm = inv.run(m0)
 
+cond_est = recipmap * expmap * actmap * minv_tetm
+fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+
+# log conductivity
+model = (cond_est)
+print(np.log10(model))
+model[~active_cells] = np.nan
+clim = [(-1), (-3)]
+
+dat = mesh.plot_image(
+    np.log10(model),
+    ax=ax,
+    # grid=True,
+    clim=clim,
+    pcolor_opts={"cmap": "viridis"}
+)
+
+ax.set_title('Log Conductivity')
+plt.colorbar(
+    dat[0],
+    cmap='viridis', 
+    label=r'Log Conductivity ($\Omega$m^-1)',   
+    shrink=0.6
+).ax.tick_params(labelsize=14)
+
+ax.set_aspect('equal')
+ax.plot(
+    rx_locs[:, 0],
+    rx_locs[:, 1], 'k.'
+)
+ax.set_title("TE+TM mode - Weighted Least Squares Inversion")
+ax.set_xlabel("easting (m)")
+ax.set_ylabel("elevation (m)")
+ax.set_xlim([-3500, 3500])
+ax.set_ylim([-12000, 100])
+plt.show()
+# fig.savefig('out/dipping_cond_final_model.png')
+
+J_matrix = te_sim.getJ(minv_tetm)
+
+cell_sensitivity = np.sqrt(np.sum(J_matrix**2, axis=0))
+
+# Plot the sensitivity mapped back onto your inversion mesh
+plotmap = maps.InjectActiveCells(
+    mesh, active_cells=active_cells, value_inactive=0
+)
+fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+mesh.plot_image(plotmap * cell_sensitivity, ax=ax, grid=True)
+ax.set_title("Total Sensitivity per Cell at Inversion Final State")
+plt.show()
