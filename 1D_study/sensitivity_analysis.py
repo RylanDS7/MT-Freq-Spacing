@@ -135,8 +135,8 @@ def plot_delta_sensitivity(m, sim):
 
 
 
-model, mesh = generate_halfspace(1000)
-freqs = [10, 100, 1000]
+model, mesh = generate_halfspace(10)
+freqs = [100, 8.88096, 3.06581, 1.53673, 0.92058, 0.6124, 0.43663, 0.32693, 0.25392, 0.20289, 0.16583, 0.13807, 0.11674, 0.1]
 sim = build_sim(mesh, freqs)
 
 # plot_mesh_quantity(sim.rhoMap * model, sim)
