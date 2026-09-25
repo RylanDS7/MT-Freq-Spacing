@@ -10,9 +10,8 @@ from pymatsolver import Pardiso
 from discretize import TensorMesh
 
 import numpy as np
-import matplotlib as mpl
 import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
+import math
 
 
 def generate_halfspace(rho):
@@ -64,7 +63,7 @@ def build_sim(mesh, freqs):
     return sim
 
 
-def plot_mesh_quantity(plot_q, sim):
+def plot_mesh_quantity(plot_q, sim, label='Quantity'):
     mesh = sim.mesh
     mapping = maps.ExpMap()
 
@@ -76,8 +75,8 @@ def plot_mesh_quantity(plot_q, sim):
         ax.axhline(node, color='gray', linestyle='--', alpha=0.3)
 
     ax.set_ylabel('Distance/Depth (m)')
-    ax.set_xlabel('Resistivity')
-    ax.set_title('1D Quantity')
+    ax.set_xlabel(label)
+    ax.set_title(f'1D {label}')
     ax.grid(True, alpha=0.1)
     plt.show()
 
@@ -98,14 +97,48 @@ def plot_J(m, sim):
     plt.show()
 
 
-def plot_delta_sensitivity(m, freqs):
+def skin_depth(f, m, sim):
+    mesh = sim.mesh
+    widths = np.flip(mesh.h[0])
+    rho = np.flip(sim.rhoMap * m)
+
+    depth = 0
+    A = 1
+    for i, w in enumerate(widths):
+        if A <= 1 / math.e:
+            break
+
+        delta = 503 * np.sqrt(rho[i] / f)
+        A = A * np.exp(-w / delta)
+
+        depth += w
+
+    return depth
+
+
+
+def plot_delta_sensitivity(m, sim):
     n_freq = len(freqs)
 
-    # To be implemented
+    weights = np.zeros(mesh.nC)
+    for f in freqs:
+        depth = skin_depth(f, m, sim)
+        seen_cells_mask = mesh.cell_centers > - depth
+        seen_cells = np.where(seen_cells_mask)[0]
+
+        weight = 1 / (n_freq * len(seen_cells))
+        weights[seen_cells] += weight
+
+    plot_mesh_quantity(weights, sim, label='Skin Depth Weight')
+
+    
 
 
 
 model, mesh = generate_halfspace(1000)
-freqs = [100]
+freqs = [10, 100, 1000]
 sim = build_sim(mesh, freqs)
-plot_mesh_quantity(sim.rhoMap * model, sim)
+
+# plot_mesh_quantity(sim.rhoMap * model, sim)
+
+plot_delta_sensitivity(model, sim)
