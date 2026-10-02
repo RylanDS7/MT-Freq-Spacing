@@ -81,20 +81,12 @@ def plot_mesh_quantity(plot_q, sim, label='Quantity'):
     plt.show()
 
 
-# DOESNT WORK BECAUSE getJ IS NOT IMPLEMENTED FOR SIMPEG 1DSIM
 def plot_J(m, sim):
     J = sim.getJ(m)
-    mesh = sim.mesh
 
     cell_sensitivity = np.sqrt(np.sum(J**2, axis=0))
 
-    active_cells = sim.active_cells
-    plot_map = maps.InjectActiveCells(mesh, active_cells=active_cells, value_inactive=0)
-
-    fig, ax = plt.subplots(1, 1, figsize=(8, 5))
-    mesh.plot_image(plot_map * cell_sensitivity, ax=ax, grid=True)
-    ax.set_title("Total Sensitivity per Cell")
-    plt.show()
+    plot_mesh_quantity(cell_sensitivity, sim, label="J Sensitivities")
 
 
 def skin_depth(f, m, sim):
@@ -141,4 +133,5 @@ sim = build_sim(mesh, freqs)
 
 # plot_mesh_quantity(sim.rhoMap * model, sim)
 
+plot_J(model, sim)
 plot_delta_sensitivity(model, sim)
