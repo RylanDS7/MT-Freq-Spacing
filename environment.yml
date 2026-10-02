@@ -1,0 +1,22 @@
+name: simpeg-nsem2
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+
+  # Core scientific stack
+  - numpy
+  - scipy
+  - matplotlib
+
+  # Discretization & inversion
+  - discretize
+  - simpeg
+
+  # Solvers
+  - pymatsolver
+  - pydiso
+
+  # Utilities
+  - utm
+  - pip
