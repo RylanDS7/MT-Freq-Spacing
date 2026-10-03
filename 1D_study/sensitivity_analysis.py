@@ -133,24 +133,51 @@ def single_method_diff(m1, m2, s1, s2, method, depth=10000):
 
 
     if method == 'J':
-        J1 = s1.getJ(m1)
-        plotJ1 = np.sqrt(np.sum(J1**2, axis=0))
-        J2 = s2.getJ(m2)
-        plotJ2 = np.sqrt(np.sum(J2**2, axis=0))
+        plotJ1 = get_plottingJ(m1, s1, normalized=True)
+        plotJ2 = get_plottingJ(m2, s2, normalized=True)
 
-        axes[0] = plot_mesh_quantity(plotJ1, s1, label='J Model 1', ax=axes[0], depth=depth)
-        axes[1] = plot_mesh_quantity(plotJ2, s2, label='J Model 2', ax=axes[1], depth=depth)
-        axes[2] = plot_mesh_quantity(plotJ2 - plotJ1, s1, label="J Model 2 - Model 1", ax=axes[2], depth=depth)
+        axes[0] = plot_mesh_quantity(plotJ1, s1, label='J Model 1 (Norm)', ax=axes[0], depth=depth)
+        axes[1] = plot_mesh_quantity(plotJ2, s2, label='J Model 2 (Norm)', ax=axes[1], depth=depth)
+        axes[2] = plot_mesh_quantity(plotJ2 - plotJ1, s1, label="J Model 2 - Model 1 (Norm)", ax=axes[2], depth=depth)
 
     plt.show()
 
 
-def plot_J(m, sim, ax=None):
+def single_sim_diff(m, s, depth=10000):
+    # J normalization assumed
+    fig, ax = plt.subplots(1, 3, figsize=(15, 10))
+    axes = ax.flatten()
+
+    w = delta_sesitivity_weights(m, s)
+    plotJ = get_plottingJ(m, s, normalized=True)
+
+    axes[0] = plot_mesh_quantity(w, s, label='Skin Depth Weight', ax=axes[0], depth=depth)
+    axes[1] = plot_mesh_quantity(plotJ, s, label='Normalized J Sensitivities', ax=axes[1], depth=depth)
+    axes[2] = plot_mesh_quantity(plotJ - w, s, label='Normalized J - Skin Depth Weight', ax=axes[2], depth=depth)
+
+    plt.show()
+
+
+def get_plottingJ(m, sim, normalized=False):
     J = sim.getJ(m)
 
     cell_sensitivity = np.sqrt(np.sum(J**2, axis=0))
+    if normalized:
+        cell_sensitivity = normalize_J(cell_sensitivity)
 
+    return cell_sensitivity
+
+
+def plot_J(m, sim, ax=None, normalized=False):
+    cell_sensitivity = get_plottingJ(m, sim, normalized)
+    
     plot_mesh_quantity(cell_sensitivity, sim, label="J Sensitivities", ax=ax)
+
+
+# TODO: NEEDS TO NORMALIZE BY AREA DEPENDANCE
+def normalize_J(J):
+    normJ = J / np.sum(J)
+    return normJ
 
 
 def skin_depth(f, m, sim):
@@ -229,4 +256,6 @@ title_list.append(f"10 Ohmm Halfspace Log Spaced Frequencies")
 
 # compare_models(model_list, sim_list, title_list)
 
-single_method_diff(model_list[0], model_list[2], sim_list[0], sim_list[2], method='J', depth=1000)
+# single_method_diff(model_list[0], model_list[2], sim_list[0], sim_list[2], method='J', depth=1000)
+
+single_sim_diff(model_list[0], sim_list[0])
