@@ -63,7 +63,7 @@ def build_sim(mesh, freqs):
     return sim
 
 
-def plot_mesh_quantity(plot_q, sim, label='Quantity', ax=None):
+def plot_mesh_quantity(plot_q, sim, label='Quantity', ax=None, depth=10000):
     mesh = sim.mesh
     mapping = maps.ExpMap()
 
@@ -80,7 +80,7 @@ def plot_mesh_quantity(plot_q, sim, label='Quantity', ax=None):
 
     ax.set_ylabel('Distance/Depth (m)')
     ax.set_xlabel(label)
-    ax.set_ylim((-10000, 1))
+    ax.set_ylim((-depth, 0))
     ax.set_title(f'1D {label}')
     ax.grid(True, alpha=0.1)
 
@@ -119,6 +119,32 @@ def compare_models(m_list, sim_list, title_list):
     plt.show()
 
 
+def single_method_diff(m1, m2, s1, s2, method, depth=10000):
+    fig, ax = plt.subplots(1, 3, figsize=(15, 10))
+    axes = ax.flatten()
+
+    if method == 'skin':
+        w1 = delta_sesitivity_weights(m1, s1)
+        w2 = delta_sesitivity_weights(m2, s2)
+
+        axes[0] = plot_mesh_quantity(w1, s1, label='Skin Depth Weight Model 1', ax=axes[0], depth=depth)
+        axes[1] = plot_mesh_quantity(w2, s2, label='Skin Depth Weight Model 2', ax=axes[1], depth=depth)
+        axes[2] = plot_mesh_quantity(w2 - w1, s1, label="Skin Depth Weight Model 2 - Model 1", ax=axes[2], depth=depth)
+
+
+    if method == 'J':
+        J1 = s1.getJ(m1)
+        plotJ1 = np.sqrt(np.sum(J1**2, axis=0))
+        J2 = s2.getJ(m2)
+        plotJ2 = np.sqrt(np.sum(J2**2, axis=0))
+
+        axes[0] = plot_mesh_quantity(plotJ1, s1, label='J Model 1', ax=axes[0], depth=depth)
+        axes[1] = plot_mesh_quantity(plotJ2, s2, label='J Model 2', ax=axes[1], depth=depth)
+        axes[2] = plot_mesh_quantity(plotJ2 - plotJ1, s1, label="J Model 2 - Model 1", ax=axes[2], depth=depth)
+
+    plt.show()
+
+
 def plot_J(m, sim, ax=None):
     J = sim.getJ(m)
 
@@ -145,9 +171,7 @@ def skin_depth(f, m, sim):
 
     return depth
 
-
-
-def plot_delta_sensitivity(m, sim, ax=None):
+def delta_sesitivity_weights(m, sim):
     freqs = sim.survey.frequencies
     n_freq = len(freqs)
 
@@ -159,6 +183,12 @@ def plot_delta_sensitivity(m, sim, ax=None):
 
         weight = 1 / (n_freq * len(seen_cells))
         weights[seen_cells] += weight
+
+    return weights
+
+
+def plot_delta_sensitivity(m, sim, ax=None):
+    weights = delta_sesitivity_weights(m, sim)
 
     plot_mesh_quantity(weights, sim, label='Skin Depth Weight', ax=ax)
 
@@ -197,9 +227,6 @@ model_list.append(model)
 title_list.append(f"10 Ohmm Halfspace Log Spaced Frequencies")
 
 
-compare_models(model_list, sim_list, title_list)
+# compare_models(model_list, sim_list, title_list)
 
-
-print(f"Skin Depth Spaced Skin Depths: {freqs_2_skin_depths(freqs_skin_spaced, 10)}")
-print(f"Median Freq Skin Depths: {freqs_2_skin_depths(freq_med, 10)}")
-print(f"Log Spaced Skin Depths: {freqs_2_skin_depths(freqs_log_spaced, 10)}")
+single_method_diff(model_list[0], model_list[2], sim_list[0], sim_list[2], method='J', depth=1000)
