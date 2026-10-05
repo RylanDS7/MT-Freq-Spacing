@@ -43,22 +43,39 @@ def build_sim(mesh, freqs):
     src_list = []
     for f in freqs:
         src_list.append(
-            nsem.sources.Planewave(
+            nsem.sources.PlanewaveXYPrimary(
                 receiver_list=rx_list,
                 frequency=f,
             )
         )
 
+    # src_list = []
+    # for f in freqs:
+    #     src_list.append(
+    #         nsem.sources.Planewave(
+    #             receiver_list=rx_list,
+    #             frequency=f,
+    #         )
+    #     )
+
     survey = nsem.Survey(src_list)
 
     mapping = maps.ExpMap()
 
-    sim = nsem.Simulation1DElectricField(
+    sim = nsem.Simulation1DPrimarySecondary(
         mesh,
         survey=survey,
         rhoMap=mapping,
+        sigmaPrimary=np.zeros(mesh.nC) + 0.1,
         solver=Pardiso,
     )
+
+    # sim = nsem.Simulation1DElectricField(
+    #     mesh,
+    #     survey=survey,
+    #     rhoMap=mapping,
+    #     solver=Pardiso,
+    # )
 
     return sim
 
@@ -254,8 +271,8 @@ model_list.append(model)
 title_list.append(f"10 Ohmm Halfspace Log Spaced Frequencies")
 
 
-# compare_models(model_list, sim_list, title_list)
+compare_models(model_list, sim_list, title_list)
 
-# single_method_diff(model_list[0], model_list[2], sim_list[0], sim_list[2], method='J', depth=1000)
+single_method_diff(model_list[0], model_list[2], sim_list[0], sim_list[2], method='skin', depth=3000)
 
-single_sim_diff(model_list[0], sim_list[0])
+single_sim_diff(model_list[0], sim_list[0], depth=3000)
