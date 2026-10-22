@@ -11,6 +11,7 @@ from discretize import TensorMesh
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 import math
 
 
@@ -24,7 +25,7 @@ def generate_halfspace(rho):
     return model, mesh
 
 
-def build_sim(mesh, freqs):
+def build_sim(mesh, freqs, rho_back=100):
     rx_loc = np.array([-0.1])
 
     rx_list = [
@@ -49,15 +50,6 @@ def build_sim(mesh, freqs):
             )
         )
 
-    # src_list = []
-    # for f in freqs:
-    #     src_list.append(
-    #         nsem.sources.Planewave(
-    #             receiver_list=rx_list,
-    #             frequency=f,
-    #         )
-    #     )
-
     survey = nsem.Survey(src_list)
 
     mapping = maps.ExpMap()
@@ -66,16 +58,9 @@ def build_sim(mesh, freqs):
         mesh,
         survey=survey,
         rhoMap=mapping,
-        sigmaPrimary=np.zeros(mesh.nC) + 0.1,
+        sigmaPrimary=np.zeros(mesh.nC) + 1 / rho_back,
         solver=Pardiso,
     )
-
-    # sim = nsem.Simulation1DElectricField(
-    #     mesh,
-    #     survey=survey,
-    #     rhoMap=mapping,
-    #     solver=Pardiso,
-    # )
 
     return sim
 
@@ -136,7 +121,7 @@ def compare_models(m_list, sim_list, title_list):
     plt.show()
 
 
-def single_method_diff(m1, m2, s1, s2, method, depth=10000):
+def single_method_diff(m1, m2, s1, s2, method, depth=10000, show=True):
     fig, ax = plt.subplots(1, 3, figsize=(15, 10))
     axes = ax.flatten()
 
@@ -150,14 +135,18 @@ def single_method_diff(m1, m2, s1, s2, method, depth=10000):
 
 
     if method == 'J':
-        plotJ1 = get_plottingJ(m1, s1, normalized=True)
-        plotJ2 = get_plottingJ(m2, s2, normalized=True)
+        plotJ1 = get_plottingJ(m1, s1, normalized=False)
+        plotJ2 = get_plottingJ(m2, s2, normalized=False)
 
         axes[0] = plot_mesh_quantity(plotJ1, s1, label='J Model 1 (Norm)', ax=axes[0], depth=depth)
         axes[1] = plot_mesh_quantity(plotJ2, s2, label='J Model 2 (Norm)', ax=axes[1], depth=depth)
         axes[2] = plot_mesh_quantity(plotJ2 - plotJ1, s1, label="J Model 2 - Model 1 (Norm)", ax=axes[2], depth=depth)
 
-    plt.show()
+    if show:
+        plt.show()
+    else:
+        return fig, axes
+        
 
 
 def single_sim_diff(m, s, depth=10000):
@@ -219,10 +208,10 @@ def delta_sesitivity_weights(m, sim):
     freqs = sim.survey.frequencies
     n_freq = len(freqs)
 
-    weights = np.zeros(mesh.nC)
+    weights = np.zeros(m.nC)
     for f in freqs:
         depth = skin_depth(f, m, sim)
-        seen_cells_mask = mesh.cell_centers > - depth
+        seen_cells_mask = m.cell_centers > - depth
         seen_cells = np.where(seen_cells_mask)[0]
 
         weight = 1 / (n_freq * len(seen_cells))
@@ -241,38 +230,99 @@ def freqs_2_skin_depths(freqs, rho):
     return 503 * np.sqrt(rho / np.array(freqs))
 
 
+def get_skin_depth_samples(rho, fmax, fmin, Nfreq):
+    delta_min = 503 * np.sqrt(rho / fmax)
+    delta_max = 503 * np.sqrt(rho / fmin)
+
+    delta = np.linspace(delta_min, delta_max, Nfreq)
+    freqs = rho * (503 / delta)**2
+
+    return freqs
 
 
-model, mesh = generate_halfspace(10)
+def resistivity_sweep(upper_rho, lower_rho, Nmodels, method='J', title='rho_sweep.pdf'):
+    rhos = np.logspace(np.log10(lower_rho), np.log10(upper_rho), Nmodels)
 
-model_list = []
-sim_list = []
-title_list = []
+    fmax = 10
+    fmin = 0.001
+    Nfreq = 12
 
-freqs_skin_spaced = [100, 8.88096, 3.06581, 1.53673, 0.92058, 0.6124, 0.43663, 0.32693, 0.25392, 0.20289, 0.16583, 0.13807, 0.11674, 0.1]
-sim = build_sim(mesh, freqs_skin_spaced)
-# compare_sensitivities(model, sim, title=f"10 Ohmm Halfspace Skin Depth Spaced Frequencies")
-sim_list.append(sim)
-model_list.append(model)
-title_list.append(f"10 Ohmm Halfspace Skin Depth Spaced Frequencies")
+    skin_sims = []
+    log_sims = []
+    models = []
+    for r in rhos:
+        model, mesh = generate_halfspace(r)
+        models.append(model)
 
-freq_med = [np.median(freqs_skin_spaced)]
-sim = build_sim(mesh, freq_med)
-# compare_sensitivities(model, sim, title=f"10 Ohmm Halfspace f={freq_med[0]}Hz")
-sim_list.append(sim)
-model_list.append(model)
-title_list.append(f"10 Ohmm Halfspace f={freq_med[0]}Hz")
+        freqs_skin = get_skin_depth_samples(r, fmax, fmin, Nfreq)
+        freqs_log = np.logspace(np.log10(fmin), np.log10(fmax), Nfreq)
 
-freqs_log_spaced = np.logspace(2, -1, 14)
-sim = build_sim(mesh, freqs_log_spaced)
-# compare_sensitivities(model, sim, title=f"10 Ohmm Halfspace Log Spaced Frequencies")
-sim_list.append(sim)
-model_list.append(model)
-title_list.append(f"10 Ohmm Halfspace Log Spaced Frequencies")
+        sim_skin = build_sim(mesh, freqs_skin, rho_back=r)
+        sim_log = build_sim(mesh, freqs_log, rho_back=r)
+
+        skin_sims.append(sim_skin)
+        log_sims.append(sim_log)
+
+    with PdfPages(title) as pdf:
+        cover_fig = plt.figure(figsize=(15, 10))
+
+        cover_title = "Resisitivity Sweep - J Plotting Skin Depth Spaced Freqs vs Log Spaced Freqs"
+        cover_fig.text(0.5, 0.9, cover_title, va="top", ha="center", fontsize=20, wrap=False)
+
+        freq_text = f"Log Spaced Freqs = {freqs_log}"
+        cover_fig.text(0.5, 0.7, freq_text, va="top", ha="center", fontsize=16, wrap=False)
+
+        rho_text = f"Resistivities = {rhos}"
+        cover_fig.text(0.5, 0.5, rho_text, va="top", ha="center", fontsize=16, wrap=False)
+
+        pdf.savefig(cover_fig)
+        plt.close(cover_fig)
+
+        for i, m in enumerate(models):
+            fig, axes = single_method_diff(m, m, skin_sims[i], log_sims[i], method='J', depth=10000, show=False)
+            fig.suptitle(f"{rhos[i]} Ohm m Halfspace Model")
+            axes[0].set_title("Skin Depth Spaced J")
+            axes[1].set_title("Log Spaced J")
+            axes[2].set_title("Log Spaced J - Skin Depth Spaced J")
+            pdf.savefig(fig)
+            plt.close(fig)
 
 
-compare_models(model_list, sim_list, title_list)
 
-single_method_diff(model_list[0], model_list[2], sim_list[0], sim_list[2], method='skin', depth=3000)
 
-single_sim_diff(model_list[0], sim_list[0], depth=3000)
+# model, mesh = generate_halfspace(10)
+
+# model_list = []
+# sim_list = []
+# title_list = []
+
+# freqs_skin_spaced = [100, 8.88096, 3.06581, 1.53673, 0.92058, 0.6124, 0.43663, 0.32693, 0.25392, 0.20289, 0.16583, 0.13807, 0.11674, 0.1]
+# sim = build_sim(mesh, freqs_skin_spaced)
+# # compare_sensitivities(model, sim, title=f"10 Ohmm Halfspace Skin Depth Spaced Frequencies")
+# sim_list.append(sim)
+# model_list.append(model)
+# title_list.append(f"10 Ohmm Halfspace Skin Depth Spaced Frequencies")
+
+# freq_med = [np.median(freqs_skin_spaced)]
+# sim = build_sim(mesh, freq_med)
+# # compare_sensitivities(model, sim, title=f"10 Ohmm Halfspace f={freq_med[0]}Hz")
+# sim_list.append(sim)
+# model_list.append(model)
+# title_list.append(f"10 Ohmm Halfspace f={freq_med[0]}Hz")
+
+# freqs_log_spaced = np.logspace(2, -1, 14)
+# sim = build_sim(mesh, freqs_log_spaced)
+# # compare_sensitivities(model, sim, title=f"10 Ohmm Halfspace Log Spaced Frequencies")
+# sim_list.append(sim)
+# model_list.append(model)
+# title_list.append(f"10 Ohmm Halfspace Log Spaced Frequencies")
+
+
+# # compare_models(model_list, sim_list, title_list)
+
+# single_method_diff(model_list[0], model_list[2], sim_list[0], sim_list[2], method='skin', depth=3000)
+
+# single_sim_diff(model_list[0], sim_list[0], depth=3000)
+
+
+resistivity_sweep(1000, 10, 10)
