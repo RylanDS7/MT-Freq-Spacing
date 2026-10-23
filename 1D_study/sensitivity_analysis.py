@@ -16,7 +16,8 @@ import math
 
 
 def generate_halfspace(rho):
-    cell_widths = np.append(np.logspace(3, 1, 150), 10.0 * np.ones(100))
+    cell_widths = np.append(np.logspace(6, 2, 200), 100.0 * np.ones(500))
+    # cell_widths = 1000.0 * np.ones(5000)
     mesh = TensorMesh([cell_widths], origin="N")
 
     rho_log = np.log(rho) # log of 100 Ohm-m
@@ -75,10 +76,10 @@ def plot_mesh_quantity(plot_q, sim, label='Quantity', ax=None, depth=10000):
     else:
         plot = False
 
-    ax.step(np.append(plot_q, plot_q[-1]), mesh.nodes_x, where='post', color='blue', lw=2)
+    ax.step(np.append(plot_q, plot_q[-1]), mesh.nodes_x, where='post', color='blue', lw=1)
 
     for node in mesh.nodes_x:
-        ax.axhline(node, color='gray', linestyle='--', alpha=0.3)
+        ax.axhline(node, color='gray', linestyle='--', alpha=0.3, lw=0.25)
 
     ax.set_ylabel('Distance/Depth (m)')
     ax.set_xlabel(label)
@@ -92,15 +93,15 @@ def plot_mesh_quantity(plot_q, sim, label='Quantity', ax=None, depth=10000):
     return ax
 
 
-def compare_sensitivities(m, sim, title="", subfig=None):
+def compare_sensitivities(m, sim, title="", subfig=None, depth=10000):
     if subfig == None:
         fig, ax = plt.subplots(1, 2, figsize=(15, 10))
         axes = ax.flatten()
     else:
         axes = subfig.subplots(1, 2)
 
-    axes[0] = plot_J(m, sim, ax=axes[0])
-    axes[1] = plot_delta_sensitivity(m, sim, ax=axes[1])
+    axes[0] = plot_J(m, sim, ax=axes[0], depth=depth)
+    axes[1] = plot_delta_sensitivity(m, sim, ax=axes[1], depth=depth)
 
     if subfig == None:
         fig.suptitle(title)
@@ -128,19 +129,40 @@ def single_method_diff(m1, m2, s1, s2, method, depth=10000, show=True):
     if method == 'skin':
         w1 = delta_sesitivity_weights(m1, s1)
         w2 = delta_sesitivity_weights(m2, s2)
+        diff = w2 - w1
 
         axes[0] = plot_mesh_quantity(w1, s1, label='Skin Depth Weight Model 1', ax=axes[0], depth=depth)
         axes[1] = plot_mesh_quantity(w2, s2, label='Skin Depth Weight Model 2', ax=axes[1], depth=depth)
-        axes[2] = plot_mesh_quantity(w2 - w1, s1, label="Skin Depth Weight Model 2 - Model 1", ax=axes[2], depth=depth)
+        axes[2] = plot_mesh_quantity(diff, s1, label="Skin Depth Weight Model 2 - Model 1", ax=axes[2], depth=depth)
 
 
     if method == 'J':
         plotJ1 = get_plottingJ(m1, s1, normalized=False)
         plotJ2 = get_plottingJ(m2, s2, normalized=False)
+        diff = plotJ2 - plotJ1
 
         axes[0] = plot_mesh_quantity(plotJ1, s1, label='J Model 1 (Norm)', ax=axes[0], depth=depth)
         axes[1] = plot_mesh_quantity(plotJ2, s2, label='J Model 2 (Norm)', ax=axes[1], depth=depth)
-        axes[2] = plot_mesh_quantity(plotJ2 - plotJ1, s1, label="J Model 2 - Model 1 (Norm)", ax=axes[2], depth=depth)
+        axes[2] = plot_mesh_quantity(diff, s1, label="J Model 2 - Model 1 (Norm)", ax=axes[2], depth=depth)
+
+    plt.axvline(x=0, color='r', lw=0.1)
+
+    above_magnitude = 0
+    below_magnitude = 0
+    for d in diff:
+        if d > 0:
+            above_magnitude += d
+        elif d < 0:
+            below_magnitude += d
+
+    axes[2].text(
+        0.95, 0.05,                   
+        f"Positive Diff Sum: {above_magnitude:.5f}\nNegative Diff Sum: {below_magnitude:.5f}",           
+        transform=axes[2].transAxes,       # Use axes-relative coordinates
+        horizontalalignment='right',  # Align right edge of text to X coordinate
+        verticalalignment='bottom'    # Align bottom edge of text to Y coordinate
+    )
+
 
     if show:
         plt.show()
@@ -174,10 +196,10 @@ def get_plottingJ(m, sim, normalized=False):
     return cell_sensitivity
 
 
-def plot_J(m, sim, ax=None, normalized=False):
+def plot_J(m, sim, ax=None, normalized=False, depth=10000):
     cell_sensitivity = get_plottingJ(m, sim, normalized)
     
-    plot_mesh_quantity(cell_sensitivity, sim, label="J Sensitivities", ax=ax)
+    plot_mesh_quantity(cell_sensitivity, sim, label="J Sensitivities", ax=ax, depth=depth)
 
 
 # TODO: NEEDS TO NORMALIZE BY AREA DEPENDANCE
@@ -207,11 +229,12 @@ def skin_depth(f, m, sim):
 def delta_sesitivity_weights(m, sim):
     freqs = sim.survey.frequencies
     n_freq = len(freqs)
+    mesh = sim.mesh
 
-    weights = np.zeros(m.nC)
+    weights = np.zeros(mesh.nC)
     for f in freqs:
         depth = skin_depth(f, m, sim)
-        seen_cells_mask = m.cell_centers > - depth
+        seen_cells_mask = mesh.cell_centers > - depth
         seen_cells = np.where(seen_cells_mask)[0]
 
         weight = 1 / (n_freq * len(seen_cells))
@@ -220,10 +243,10 @@ def delta_sesitivity_weights(m, sim):
     return weights
 
 
-def plot_delta_sensitivity(m, sim, ax=None):
+def plot_delta_sensitivity(m, sim, ax=None, depth=10000):
     weights = delta_sesitivity_weights(m, sim)
 
-    plot_mesh_quantity(weights, sim, label='Skin Depth Weight', ax=ax)
+    plot_mesh_quantity(weights, sim, label='Skin Depth Weight', ax=ax, depth=depth)
 
 
 def freqs_2_skin_depths(freqs, rho):
@@ -243,8 +266,8 @@ def get_skin_depth_samples(rho, fmax, fmin, Nfreq):
 def resistivity_sweep(upper_rho, lower_rho, Nmodels, method='J', title='rho_sweep.pdf'):
     rhos = np.logspace(np.log10(lower_rho), np.log10(upper_rho), Nmodels)
 
-    fmax = 10
-    fmin = 0.001
+    fmax = 100
+    fmin = 0.01
     Nfreq = 12
 
     skin_sims = []
@@ -279,7 +302,17 @@ def resistivity_sweep(upper_rho, lower_rho, Nmodels, method='J', title='rho_swee
         plt.close(cover_fig)
 
         for i, m in enumerate(models):
-            fig, axes = single_method_diff(m, m, skin_sims[i], log_sims[i], method='J', depth=10000, show=False)
+            depth = 503 * np.sqrt(rhos[i] / fmin)
+
+            fig, axes = single_method_diff(m, m, skin_sims[i], log_sims[i], method='skin', depth=depth, show=False)
+            fig.suptitle(f"{rhos[i]} Ohm m Halfspace Model")
+            axes[0].set_title("Skin Depth Spaced Skin Depth Weight")
+            axes[1].set_title("Log Spaced Skin Depth Weight")
+            axes[2].set_title("Log Spaced Skin Depth Weight - Skin Depth Spaced Skin Depth Weight")
+            pdf.savefig(fig)
+            plt.close(fig)
+
+            fig, axes = single_method_diff(m, m, skin_sims[i], log_sims[i], method='J', depth=depth, show=False)
             fig.suptitle(f"{rhos[i]} Ohm m Halfspace Model")
             axes[0].set_title("Skin Depth Spaced J")
             axes[1].set_title("Log Spaced J")
@@ -325,4 +358,15 @@ def resistivity_sweep(upper_rho, lower_rho, Nmodels, method='J', title='rho_swee
 # single_sim_diff(model_list[0], sim_list[0], depth=3000)
 
 
-resistivity_sweep(1000, 10, 10)
+# resistivity_sweep(1000, 100, 10)
+
+rho = 100
+fmax = 100
+fmin = 0.01
+Nfreq = 2000
+
+
+model, mesh = generate_halfspace(rho)
+freqs = get_skin_depth_samples(rho, fmax, fmin, Nfreq)
+sim = build_sim(mesh, freqs)
+compare_sensitivities(model, sim, title=f"1000 Ohmm Halfspace Skin Depth Spaced Frequencies")
